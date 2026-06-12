@@ -254,7 +254,6 @@ Your app now supports **Google OAuth authentication**! Users can sign in with Go
 1. Get OAuth credentials from Google Cloud Console
 2. Add to `backend/.env`
 3. Restart backend
-4. Test at http://localhost:5173
 
 **Files:**
 - `QUICK_REFERENCE.md` - 5-minute quick start
