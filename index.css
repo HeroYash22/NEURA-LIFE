@@ -1,0 +1,172 @@
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import PremiumNavbar from './PremiumNavbar';
+
+const API_URL = 'http://localhost:8000';
+
+function TherapyChat({ setToken }) {
+  const { therapistId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [therapist, setTherapist] = useState(location.state?.therapist || null);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!therapist) {
+      fetchTherapistInfo();
+    }
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000); // Poll every 3 seconds
+    return () => clearInterval(interval);
+  }, [therapistId]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const fetchTherapistInfo = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/api/therapy/therapist/${therapistId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setTherapist(response.data);
+    } catch (err) {
+      console.error('Error fetching therapist:', err);
+    }
+  };
+
+  const fetchMessages = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/api/therapy/messages/${therapistId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMessages(response.data.messages || []);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    }
+  };
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `${API_URL}/api/therapy/send-message`,
+        {
+          therapist_id: parseInt(therapistId),
+          message: newMessage
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setNewMessage('');
+      fetchMessages();
+    } catch (err) {
+      alert('Failed to send message');
+    }
+  };
+
+  if (!therapist) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors duration-300">
+      <PremiumNavbar setToken={setToken} />
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden transition-colors duration-300" style={{ height: 'calc(100vh - 200px)' }}>
+          {/* Chat Header */}
+          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate('/therapy-sessions')}
+                className="flex items-center gap-2 text-white hover:bg-white/20 px-3 py-2 rounded-lg transition font-medium"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back
+              </button>
+              <div className="text-3xl">{therapist.avatar || '👨‍⚕️'}</div>
+              <div>
+                <h2 className="text-xl font-bold text-white">{therapist.name}</h2>
+                <p className="text-purple-200 text-sm">{therapist.specialization}</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition">
+                📹 Video Call
+              </button>
+              <button className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg transition">
+                📅 Book
+              </button>
+            </div>
+          </div>
+
+          {/* Messages Area */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50" style={{ height: 'calc(100% - 180px)' }}>
+            {messages.length > 0 ? (
+              messages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-md px-4 py-3 rounded-2xl ${
+                      msg.sender === 'user'
+                        ? 'bg-purple-600 text-white rounded-br-none'
+                        : 'bg-white text-gray-800 shadow rounded-bl-none'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{msg.message}</p>
+                    <p className={`text-xs mt-1 ${msg.sender === 'user' ? 'text-purple-200' : 'text-gray-400'}`}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">💬</div>
+                <p className="text-gray-600">No messages yet. Start the conversation!</p>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Message Input */}
+          <form onSubmit={sendMessage} className="border-t border-gray-200 p-4 bg-white">
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type your message..."
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+              />
+              <button
+                type="submit"
+                className="bg-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-purple-700 transition"
+              >
+                Send 📤
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default TherapyChat;
