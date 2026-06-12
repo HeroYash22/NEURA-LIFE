@@ -1,27 +1,334 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NeuraLife - Your Wellness Companion</title>
-    <script>
-      // Initialize dark mode before page renders to prevent flash
-      // Default to light mode unless explicitly set to dark
-      const darkMode = localStorage.getItem('darkMode');
-      if (darkMode === 'true') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-        // If not set, default to light mode
-        if (darkMode === null) {
-          localStorage.setItem('darkMode', 'false');
+const API_URL = 'http://localhost:8000';
+let currentTherapist = null;
+let currentPatient = null;
+
+// Check if already logged in
+window.onload = () => {
+    const therapist = localStorage.getItem('therapist');
+    if (therapist) {
+        currentTherapist = JSON.parse(therapist);
+        showDashboard();
+    }
+};
+
+// Handle Login
+async function handleLogin(event) {
+    event.preventDefault();
+    
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    
+    try {
+        const response = await fetch(`${API_URL}/api/therapist/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Login failed');
         }
-      }
-    </script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+        
+        const data = await response.json();
+        currentTherapist = data.therapist;
+        localStorage.setItem('therapist', JSON.stringify(currentTherapist));
+        localStorage.setItem('therapist_token', data.token);
+        
+        showDashboard();
+    } catch (error) {
+        alert('Login failed. Please check your credentials.');
+    }
+}
+
+// Logout
+function logout() {
+    localStorage.removeItem('therapist');
+    localStorage.removeItem('therapist_token');
+    currentTherapist = null;
+    location.reload();
+}
+
+// Show Dashboard
+async function showDashboard() {
+    document.getElementById('login-section').classList.add('hidden');
+    document.getElementById('dashboard-section').classList.remove('hidden');
+    document.getElementById('chat-section').classList.add('hidden');
+    document.getElementById('therapist-name').textContent = currentTherapist.name;
+    
+    await loadPatients();
+    await loadPendingAppointments();
+}
+
+// Load Patients
+async function loadPatients() {
+    try {
+        const token = localStorage.getItem('therapist_token');
+        const response = await fetch(`${API_URL}/api/therapist/patients`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const data = await response.json();
+        const patients = data.patients || [];
+        
+        document.getElementById('total-patients').textContent = patients.length;
+        
+        const patientsList = document.getElementById('patients-list');
+        patientsList.innerHTML = '';
+        
+        if (patients.length === 0) {
+            patientsList.innerHTML = `
+                <div class="text-center py-12">
+                    <div class="text-6xl mb-4">👥</div>
+                    <p class="text-gray-600">No patients yet. Patients will appear here once they opt in for your services.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        patients.forEach(patient => {
+            const patientCard = document.createElement('div');
+            patientCard.className = 'border border-gray-200 rounded-lg p-4 hover:shadow-lg transition cursor-pointer';
+            patientCard.onclick = () => openChat(patient);
+            patientCard.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xl">
+                            ${patient.username.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-800">${patient.username}</h4>
+                            <p class="text-sm text-gray-600">Last message: ${patient.last_message || 'No messages yet'}</p>
+                        </div>
+                    </div>
+                    <button class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                        Message 💬
+                    </button>
+                </div>
+            `;
+            patientsList.appendChild(patientCard);
+        });
+    } catch (error) {
+        console.error('Error loading patients:', error);
+    }
+}
+
+// Open Chat
+async function openChat(patient) {
+    currentPatient = patient;
+    document.getElementById('dashboard-section').classList.add('hidden');
+    document.getElementById('chat-section').classList.remove('hidden');
+    document.getElementById('chat-patient-name').textContent = patient.username;
+    
+    await loadMessages();
+    
+    // Poll for new messages
+    if (window.messageInterval) clearInterval(window.messageInterval);
+    window.messageInterval = setInterval(loadMessages, 3000);
+}
+
+// Back to Dashboard
+function backToDashboard() {
+    if (window.messageInterval) clearInterval(window.messageInterval);
+    currentPatient = null;
+    showDashboard();
+}
+
+// Load Messages
+async function loadMessages() {
+    if (!currentPatient) return;
+    
+    try {
+        const token = localStorage.getItem('therapist_token');
+        const response = await fetch(`${API_URL}/api/therapist/messages/${currentPatient.user_id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const data = await response.json();
+        const messages = data.messages || [];
+        
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.innerHTML = '';
+        
+        if (messages.length === 0) {
+            chatMessages.innerHTML = `
+                <div class="text-center py-12">
+                    <div class="text-6xl mb-4">💬</div>
+                    <p class="text-gray-600">No messages yet. Start the conversation!</p>
+                </div>
+            `;
+            return;
+        }
+        
+        messages.forEach(msg => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${msg.sender === 'therapist' ? 'justify-end' : 'justify-start'}`;
+            messageDiv.innerHTML = `
+                <div class="max-w-md px-4 py-3 rounded-2xl ${
+                    msg.sender === 'therapist'
+                        ? 'bg-indigo-600 text-white rounded-br-none'
+                        : 'bg-white text-gray-800 shadow rounded-bl-none'
+                }">
+                    <p class="whitespace-pre-wrap">${msg.message}</p>
+                    <p class="text-xs mt-1 ${msg.sender === 'therapist' ? 'text-indigo-200' : 'text-gray-400'}">
+                        ${new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+        });
+        
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    } catch (error) {
+        console.error('Error loading messages:', error);
+    }
+}
+
+// Send Message
+async function sendMessage(event) {
+    event.preventDefault();
+    
+    const input = document.getElementById('message-input');
+    const message = input.value.trim();
+    
+    if (!message || !currentPatient) return;
+    
+    try {
+        const token = localStorage.getItem('therapist_token');
+        await fetch(`${API_URL}/api/therapist/send-message`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                user_id: currentPatient.user_id,
+                message: message
+            })
+        });
+        
+        input.value = '';
+        await loadMessages();
+    } catch (error) {
+        alert('Failed to send message');
+    }
+}
+
+// Load Pending Appointments
+async function loadPendingAppointments() {
+    try {
+        const token = localStorage.getItem('therapist_token');
+        console.log('Loading pending appointments for therapist:', currentTherapist);
+        
+        const response = await fetch(`${API_URL}/api/therapist/pending-appointments`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to fetch pending appointments:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        const appointments = data.appointments || [];
+        
+        console.log('Pending appointments:', appointments);
+        
+        // Update pending requests count
+        document.getElementById('pending-requests').textContent = appointments.length;
+        
+        const appointmentsList = document.getElementById('pending-appointments-list');
+        appointmentsList.innerHTML = '';
+        
+        if (appointments.length === 0) {
+            appointmentsList.innerHTML = `
+                <div class="text-center py-8">
+                    <div class="text-5xl mb-3">✅</div>
+                    <p class="text-gray-600">No pending appointment requests</p>
+                </div>
+            `;
+            return;
+        }
+        
+        appointments.forEach(apt => {
+            const aptCard = document.createElement('div');
+            aptCard.className = 'border-2 border-yellow-300 bg-yellow-50 rounded-lg p-4 hover:shadow-lg transition';
+            aptCard.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div class="flex items-start space-x-4 flex-1">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-white font-bold text-xl">
+                            ${apt.username.charAt(0).toUpperCase()}
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-gray-800 text-lg">${apt.username}</h4>
+                            <div class="mt-2 space-y-1">
+                                <p class="text-sm text-gray-700"><strong>📅 Date:</strong> ${apt.date}</p>
+                                <p class="text-sm text-gray-700"><strong>🕒 Time:</strong> ${apt.time}</p>
+                                <p class="text-sm text-gray-700"><strong>📋 Type:</strong> ${apt.type}</p>
+                                ${apt.notes ? `<p class="text-sm text-gray-700"><strong>📝 Notes:</strong> ${apt.notes}</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 ml-4">
+                        <button 
+                            onclick="acceptAppointment(${apt.id})"
+                            class="px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition"
+                        >
+                            ✓ Accept
+                        </button>
+                        <button 
+                            onclick="rejectAppointment(${apt.id})"
+                            class="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition"
+                        >
+                            ✗ Reject
+                        </button>
+                    </div>
+                </div>
+            `;
+            appointmentsList.appendChild(aptCard);
+        });
+    } catch (error) {
+        console.error('Failed to load pending appointments:', error);
+        document.getElementById('pending-requests').textContent = '!';
+    }
+}
+
+// Accept Appointment
+async function acceptAppointment(appointmentId) {
+    try {
+        const token = localStorage.getItem('therapist_token');
+        const response = await fetch(`${API_URL}/api/therapist/appointments/${appointmentId}/accept`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+            alert('✅ Appointment accepted successfully!');
+            await loadPendingAppointments();
+        }
+    } catch (error) {
+        alert('Failed to accept appointment');
+    }
+}
+
+// Reject Appointment
+async function rejectAppointment(appointmentId) {
+    if (!confirm('Are you sure you want to reject this appointment?')) {
+        return;
+    }
+    
+    try {
+        const token = localStorage.getItem('therapist_token');
+        const response = await fetch(`${API_URL}/api/therapist/appointments/${appointmentId}/reject`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+            alert('Appointment rejected');
+            await loadPendingAppointments();
+        }
+    } catch (error) {
+        alert('Failed to reject appointment');
+    }
+}
+
