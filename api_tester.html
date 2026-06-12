@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuraLife API Tester</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 { color: #667eea; margin-bottom: 10px; }
+        h2 { color: #333; margin-top: 30px; margin-bottom: 15px; font-size: 20px; }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .success { background: #d1fae5; color: #065f46; border-left: 4px solid #10b981; }
+        .error { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+        .warning { background: #fef3c7; color: #92400e; border-left: 4px solid #f59e0b; }
+        .info { background: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+        button:hover { background: #5568d3; transform: translateY(-2px); }
+        button.secondary { background: #10b981; }
+        button.secondary:hover { background: #059669; }
+        button.danger { background: #ef4444; }
+        button.danger:hover { background: #dc2626; }
+        .code {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        input:focus { outline: none; border-color: #667eea; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 0 5px;
+        }
+        .badge.premium { background: #fef3c7; color: #92400e; }
+        .badge.coins { background: #dbeafe; color: #1e40af; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 NeuraLife API Tester</h1>
+        <p>Test your backend APIs and authentication</p>
+
+        <div id="status" class="status info">
+            Ready to test. First, login to get a token.
+        </div>
+
+        <h2>🔐 Step 1: Login</h2>
+        <input type="text" id="username" placeholder="Username" value="test1">
+        <input type="password" id="password" placeholder="Password" value="test1">
+        <button onclick="login()">Login</button>
+        <button class="danger" onclick="logout()">Logout</button>
+
+        <h2>👤 Step 2: Get User Info</h2>
+        <button onclick="getUserInfo()">Get My Info</button>
+        <div id="userInfo" class="code" style="display:none;"></div>
+
+        <h2>🎵 Step 3: Test Resources</h2>
+        <div class="grid">
+            <button onclick="testAPI('music')">🎵 Music</button>
+            <button onclick="testAPI('meditation')">🧘 Meditation</button>
+            <button onclick="testAPI('books')">📚 Books</button>
+            <button onclick="testAPI('podcasts')">🎙️ Podcasts</button>
+        </div>
+        <div id="resourcesResult" class="code" style="display:none;"></div>
+
+        <h2>📝 Step 4: Test Quizzes</h2>
+        <button onclick="testQuizList()">Get Quiz List</button>
+        <button onclick="testQuiz('phq9')">PHQ-9 Quiz</button>
+        <button onclick="testQuiz('gad7')">GAD-7 Quiz</button>
+        <button onclick="testQuiz('pss10')">PSS-10 Quiz</button>
+        <div id="quizResult" class="code" style="display:none;"></div>
+
+        <h2>💬 Step 5: Test Chatbot</h2>
+        <button onclick="testChatSessions()">Get Chat Sessions</button>
+        <div id="chatResult" class="code" style="display:none;"></div>
+
+        <h2>🔧 Utilities</h2>
+        <button class="secondary" onclick="checkServers()">Check Servers</button>
+        <button class="secondary" onclick="showToken()">Show Token</button>
+        <button class="danger" onclick="clearAll()">Clear All Data</button>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        function setStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.className = `status ${type}`;
+            status.innerHTML = message;
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    localStorage.setItem('token', data.access_token);
+                    localStorage.setItem('username', username);
+                    setStatus(`✅ Logged in as ${username}! Token saved.`, 'success');
+                } else {
+                    setStatus(`❌ Login failed: ${data.detail}`, 'error');
+                }
+            } catch (err) {
+                setStatus(`❌ Error: ${err.message}. Is backend running?`, 'error');
+            }
+        }
+
+        async function getUserInfo() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setStatus('⚠️ Please login first!', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const premium = data.is_premium ? '<span class="badge premium">⭐ PREMIUM</span>' : '';
+                    const coins = `<span class="badge coins">🪙 ${data.neuracoins} Coins</span>`;
+                    setStatus(`✅ User: ${data.username} ${premium} ${coins}`, 'success');
+                    document.getElementById('userInfo').style.display = 'block';
+                    document.getElementById('userInfo').textContent = JSON.stringify(data, null, 2);
+                } else {
+                    setStatus(`❌ ${data.detail}. Try logging in again.`, 'error');
+                }
+            } catch (err) {
+                setStatus(`❌ Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function testAPI(resource) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setStatus('⚠️ Please login first!', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/resources/${resource}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const key = Object.keys(data)[0];
+                    const count = data[key].length;
+                    setStatus(`✅ ${resource}: Found ${count} items!`, 'success');
+                    document.getElementById('resourcesResult').style.display = 'block';
+                    document.getElementById('resourcesResult').textContent = JSON.stringify(data, null, 2);
+                } else {
+                    setStatus(`❌ ${data.detail}`, 'error');
+                }
+            } catch (err) {
+                setStatus(`❌ Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function testQuizList() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setStatus('⚠️ Please login first!', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/quiz/list`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    setStatus(`✅ Found ${data.quizzes.length} quizzes!`, 'success');
+                    document.getElementById('quizResult').style.display = 'block';
+                    document.getElementById('quizResult').textContent = JSON.stringify(data, null, 2);
+                } else {
+                    setStatus(`❌ ${data.detail}`, 'error');
+                }
+            } catch (err) {
+                setStatus(`❌ Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function testQuiz(quizId) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setStatus('⚠️ Please login first!', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/quiz/${quizId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    setStatus(`✅ ${data.title}: ${data.questions.length} questions`, 'success');
+                    document.getElementById('quizResult').style.display = 'block';
+                    document.getElementById('quizResult').textContent = JSON.stringify(data, null, 2);
+                } else {
+                    setStatus(`❌ ${data.detail}`, 'error');
+                }
+            } catch (err) {
+                setStatus(`❌ Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function testChatSessions() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setStatus('⚠️ Please login first!', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/chatbot/sessions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    setStatus(`✅ Found ${data.sessions.length} chat sessions`, 'success');
+                    document.getElementById('chatResult').style.display = 'block';
+                    document.getElementById('chatResult').textContent = JSON.stringify(data, null, 2);
+                } else {
+                    setStatus(`❌ ${data.detail}`, 'error');
+                }
+            } catch (err) {
+                setStatus(`❌ Error: ${err.message}`, 'error');
+            }
+        }
+
+        async function checkServers() {
+            try {
+                const backend = await fetch(`${API_URL}/`);
+                const backendData = await backend.json();
+                setStatus(`✅ Backend: ${backendData.status} | Frontend: Running on port 5174`, 'success');
+            } catch (err) {
+                setStatus(`❌ Backend not responding. Is it running on port 8000?`, 'error');
+            }
+        }
+
+        function showToken() {
+            const token = localStorage.getItem('token');
+            if (token) {
+                alert(`Token: ${token.substring(0, 50)}...`);
+                console.log('Full token:', token);
+            } else {
+                setStatus('⚠️ No token found. Please login.', 'warning');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            setStatus('👋 Logged out successfully', 'info');
+        }
+
+        function clearAll() {
+            if (confirm('Clear all localStorage data?')) {
+                localStorage.clear();
+                setStatus('🗑️ All data cleared', 'info');
+            }
+        }
+
+        // Auto-check on load
+        window.onload = () => {
+            checkServers();
+            const token = localStorage.getItem('token');
+            if (token) {
+                setStatus('✅ Token found. Click "Get My Info" to verify.', 'success');
+            }
+        };
+    </script>
+</body>
+</html>
